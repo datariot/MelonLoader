@@ -54,17 +54,16 @@ namespace MelonLoader
             Assertions.LemonAssertMapping.Setup();
             HarmonyLogger.Setup();
 
-#if !WINDOWS && !NET6_0_OR_GREATER
-            // Using Process.Start can run Console..cctor
-            // Since MonoMod's PlatformHelper (used by DetourHelper.Native) runs Process.Start to determine ARM/x86
-            // platform, this causes the unpatched TermInfoReader to kick in before it can be patched and fixed when
-            // installing the XTermFix below. To work around this, we can force the platform directly
+            // Force the native detour platform directly: MonoMod's PlatformHelper auto-detection runs
+            // Process.Start and mis-handles arm64-macOS (NullRef in ILHook..ctor). PR #1174 only wired
+            // the arm64 platform for Mono (!NET6); apply it for il2cpp/net6 too.
 #if OSX && ARM64
             DetourHelper.Native = new Fixes.MonoMod.MacOSArm64NativeDetourPlatform(
                 new DetourNativeARMPlatform());
-#else
+#elif !WINDOWS && !NET6_0_OR_GREATER
+            // Using Process.Start can run Console..cctor; force the platform directly to avoid the
+            // unpatched TermInfoReader kicking in before XTermFix is installed below.
             DetourHelper.Native = new DetourNativeMonoPosixPlatform(new DetourNativeX86Platform());
-#endif
 #endif
 
             HarmonyInstance = new HarmonyLib.Harmony(Properties.BuildInfo.Name);

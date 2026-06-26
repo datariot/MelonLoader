@@ -63,6 +63,12 @@ namespace MelonLoader.Il2CppAssemblyGenerator.Packages.Models
                 processStartInfo.CreateNoWindow = true;
                 processStartInfo.WorkingDirectory = Path.GetDirectoryName(ExeFilePath)!;
 
+                // macOS: the game runs with DYLD_INSERT_LIBRARIES=<MelonLoader bootstrap>, which child
+                // processes inherit. Helper tools (Cpp2IL) are a different arch than the bootstrap
+                // (e.g. arm64 game -> x86_64 Cpp2IL), so dyld refuses the inserted dylib and the tool
+                // crashes on launch. Don't inject MelonLoader into our own helper tools.
+                processStartInfo.EnvironmentVariables.Remove("DYLD_INSERT_LIBRARIES");
+
                 if (environment != null)
                 {
                     processStartInfo.EnvironmentVariables["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] = tempFolder;
