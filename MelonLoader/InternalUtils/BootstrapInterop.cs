@@ -55,7 +55,9 @@ internal static unsafe class BootstrapInterop
 #if NET6_0_OR_GREATER
         // SanityCheckDetour is able to wrap and fix the bad method in a delegate where possible, so we pass the detour by ref.
         // Herp: Wine/Proton are missing the PssCaptureSnapshot export from kernel32.dll so we skip CoreClrDelegateFixer.SanityCheckDetour under that runtime
+        // macOS/Darwin: ClrMD's DataTarget.CreateSnapshotAndAttach is unsupported (throws), same situation as Wine/Proton, so skip it there too.
         if (!MelonUtils.IsUnderWineOrSteamProton()
+            && !RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
             && !CoreClrDelegateFixer.SanityCheckDetour(ref detour))
             return;
 #endif

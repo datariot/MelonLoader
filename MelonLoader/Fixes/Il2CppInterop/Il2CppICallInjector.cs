@@ -59,6 +59,12 @@ namespace MelonLoader.Fixes.Il2CppInterop
                 if (il2cpp_add_internal_call == null)
                     throw new Exception($"Failed to get {nameof(il2cpp_add_internal_call)} Native Export");
 
+                // arm64 macOS: il2cpp exports are 4-byte `b real` thunks packed adjacently in the export
+                // table. Dobby's inline hook writes a ~16-byte stub, which would overrun neighbouring export
+                // thunks (e.g. il2cpp_array_class_get) and corrupt them -> SIGILL. Hook the real function the
+                // thunk points to instead.
+                il2cpp_resolve_icall = ResolveArm64Thunk(il2cpp_resolve_icall);
+
                 MelonDebug.Msg("Patching il2cpp_resolve_icall...");
                 IntPtr detourPtr = Marshal.GetFunctionPointerForDelegate((dil2cpp_resolve_icall)il2cpp_resolve_icall_Detour);
                 il2cpp_resolve_icall_hook = new NativeHook<dil2cpp_resolve_icall>(il2cpp_resolve_icall, detourPtr);
@@ -138,6 +144,23 @@ namespace MelonLoader.Fixes.Il2CppInterop
 
             // Return New Function Pointer
             return pair.Item4;
+        }
+
+        // arm64: if fn is a single-instruction veneer/thunk (`b real`), follow the chain to the real
+        // function entry. No-op on other architectures / non-thunk entries.
+        private static unsafe IntPtr ResolveArm64Thunk(IntPtr fn)
+        {
+            if (RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+                return fn;
+            for (int i = 0; i < 8 && fn != IntPtr.Zero; i++)
+            {
+                uint instr = *(uint*)fn;
+                if ((instr & 0xFC000000u) != 0x14000000u) break; // not an unconditional B -> real entry
+                long imm26 = instr & 0x03FFFFFF;
+                if ((imm26 & 0x02000000L) != 0) imm26 |= unchecked((long)0xFFFFFFFFFC000000UL);
+                fn = (IntPtr)((long)fn + (imm26 << 2));
+            }
+            return fn;
         }
 
         private static Type FindType(string typeFullName)
